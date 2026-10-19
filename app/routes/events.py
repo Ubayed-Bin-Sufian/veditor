@@ -205,9 +205,11 @@ def update_event_room(
         db.rollback()
         raise HTTPException(status_code=409, detail="Room name already exists") from exc
     db.refresh(room)
-    count = db.query(models.Talk).filter(
-        models.Talk.event_id == event_id, models.Talk.room == room.name
-    ).count()
+    count = (
+        db.query(models.Talk)
+        .filter(models.Talk.event_id == event_id, models.Talk.room == room.name)
+        .count()
+    )
     return _room_read(room, count)
 
 

@@ -23,8 +23,8 @@ from fastapi import (
     status,
 )
 from redis.exceptions import RedisError
-from sqlalchemy import func
 from rq.command import send_stop_job_command
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -94,7 +94,7 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
             )
             .first()
         )
-    except (AttributeError, StopIteration):
+    except AttributeError, StopIteration:
         # Preserve compatibility with lightweight mocked sessions used by callers.
         room = None
     if isinstance(room, models.Room):

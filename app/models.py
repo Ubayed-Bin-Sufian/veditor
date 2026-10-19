@@ -166,7 +166,9 @@ class Room(Base):
     __tablename__ = "rooms"
     __table_args__ = (
         UniqueConstraint("event_id", "name", name="uq_rooms_event_id_name"),
-        Index("uq_rooms_event_id_name_ci", "event_id", text("lower(name)"), unique=True),
+        Index(
+            "uq_rooms_event_id_name_ci", "event_id", text("lower(name)"), unique=True
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
