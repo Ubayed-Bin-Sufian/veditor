@@ -6,10 +6,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app import models
-from app.db import Base
 from app.config import settings
+from app.db import Base
 from app.routes.talks import _ensure_event_room
-
 
 engine = create_engine(settings.database_url)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -40,10 +39,9 @@ def test_room_names_are_event_scoped_and_case_insensitive(db_session):
     db_session.add(models.Room(event_id=first.id, name="Hall A"))
     db_session.flush()
 
-    with pytest.raises(IntegrityError):
-        with db_session.begin_nested():
-            db_session.add(models.Room(event_id=first.id, name="hall a"))
-            db_session.flush()
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.add(models.Room(event_id=first.id, name="hall a"))
+        db_session.flush()
 
     db_session.add(models.Room(event_id=second.id, name="hall a"))
     db_session.flush()
