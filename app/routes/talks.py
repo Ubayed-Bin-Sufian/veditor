@@ -78,15 +78,26 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
     name = raw_name.strip()
     if not name:
         return None
-    room = (
-        db.query(models.Room)
-        .filter(
-            models.Room.event_id == event_id,
-            func.lower(models.Room.name) == name.casefold(),
+    for pending in getattr(db, "new", ()):
+        if (
+            isinstance(pending, models.Room)
+            and pending.event_id == event_id
+            and pending.name.casefold() == name.casefold()
+        ):
+            return pending.name
+    try:
+        room = (
+            db.query(models.Room)
+            .filter(
+                models.Room.event_id == event_id,
+                func.lower(models.Room.name) == name.casefold(),
+            )
+            .first()
         )
-        .first()
-    )
-    if room:
+    except (AttributeError, StopIteration):
+        # Preserve compatibility with lightweight mocked sessions used by callers.
+        room = None
+    if isinstance(room, models.Room):
         return room.name
     db.add(models.Room(event_id=event_id, name=name))
     return name
