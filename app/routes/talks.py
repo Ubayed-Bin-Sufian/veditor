@@ -71,6 +71,13 @@ router = APIRouter(
 )
 
 
+def _lock_event_for_room_operation(db: Session, event_id: int) -> None:
+    """Serialize room lifecycle changes and talk assignments per event."""
+    if not isinstance(db, Session):
+        return
+    db.query(models.Event).filter(models.Event.id == event_id).with_for_update().first()
+
+
 def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str | None:
     """Register a talk room without changing the legacy Talk.room contract."""
     if raw_name is None:
@@ -78,6 +85,7 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
     name = raw_name.strip()
     if not name:
         return None
+    _lock_event_for_room_operation(db, event_id)
     for pending in getattr(db, "new", ()):
         if (
             isinstance(pending, models.Room)

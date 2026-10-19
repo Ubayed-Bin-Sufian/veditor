@@ -26,7 +26,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.db import get_db
-from app.routes.talks import _cancel_talk_jobs
+from app.routes.talks import _cancel_talk_jobs, _lock_event_for_room_operation
 from app.security import create_sso_token
 from app.storage import StorageBackend, get_storage_backend
 from app.tasks import _webhook_opener
@@ -148,6 +148,7 @@ def create_event_room(
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)
+    _lock_event_for_room_operation(db, event_id)
     room = models.Room(
         event_id=event_id, name=payload.name, description=payload.description
     )
@@ -172,6 +173,7 @@ def update_event_room(
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)
+    _lock_event_for_room_operation(db, event_id)
     room = (
         db.query(models.Room)
         .filter(models.Room.id == room_id, models.Room.event_id == event_id)
@@ -224,6 +226,7 @@ def delete_event_room(
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)
+    _lock_event_for_room_operation(db, event_id)
     room = (
         db.query(models.Room)
         .filter(models.Room.id == room_id, models.Room.event_id == event_id)
