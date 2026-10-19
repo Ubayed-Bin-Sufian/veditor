@@ -30,9 +30,13 @@ document.addEventListener('DOMContentLoaded', () => {
       remove.textContent = 'Delete';
       remove.addEventListener('click', async () => {
         if (!await Modal.confirm({ title: 'Delete room', message: `Delete “${room.name}”? Talks will keep their records but lose this room assignment.`, confirmText: 'Delete', variant: 'danger' })) return;
-        const result = await fetch(`/events/${roomsEventId}/rooms/${room.id}`, { method: 'DELETE' });
-        if (!result.ok) return Modal.alert({ title: 'Delete room', message: 'Unable to delete room.', variant: 'danger' });
-        await loadRooms();
+        try {
+          const result = await fetch(`/events/${roomsEventId}/rooms/${room.id}`, { method: 'DELETE' });
+          if (!result.ok) throw new Error('Unable to delete room.');
+          await loadRooms();
+        } catch (error) {
+          Modal.alert({ title: 'Delete room', message: error.message, variant: 'danger' });
+        }
       });
       row.append(details, remove);
       roomsList.append(row);
@@ -50,13 +54,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   roomForm?.addEventListener('submit', async event => {
     event.preventDefault();
-    const response = await fetch(`/events/${roomsEventId}/rooms`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: document.getElementById('room-name-input').value, description: document.getElementById('room-description-input').value || null }),
-    });
-    if (!response.ok) return Modal.alert({ title: 'Add room', message: (await response.json()).detail || 'Unable to add room.', variant: 'danger' });
-    roomForm.reset();
-    await loadRooms();
+    try {
+      const response = await fetch(`/events/${roomsEventId}/rooms`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: document.getElementById('room-name-input').value, description: document.getElementById('room-description-input').value || null }),
+      });
+      if (!response.ok) {
+        let body = {};
+        try { body = await response.json(); } catch (_) { /* empty response */ }
+        const detail = Array.isArray(body.detail) ? body.detail.map(item => item.msg || item).join(', ') : body.detail;
+        return Modal.alert({ title: 'Add room', message: detail || 'Unable to add room.', variant: 'danger' });
+      }
+      roomForm.reset();
+      await loadRooms();
+    } catch (error) {
+      Modal.alert({ title: 'Add room', message: error.message || 'Unable to add room.', variant: 'danger' });
+    }
   });
 
   const editModal = document.getElementById('modal-edit-event');

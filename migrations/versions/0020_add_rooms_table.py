@@ -37,6 +37,13 @@ def upgrade() -> None:
         "FROM talks WHERE room IS NOT NULL AND trim(room) <> '' "
         "ORDER BY event_id, lower(trim(room)), id"
     )
+    op.execute(
+        "UPDATE talks AS t SET room = r.name "
+        "FROM rooms AS r "
+        "WHERE r.event_id = t.event_id "
+        "AND lower(trim(t.room)) = lower(r.name) "
+        "AND t.room IS DISTINCT FROM r.name"
+    )
 
 
 def downgrade() -> None:

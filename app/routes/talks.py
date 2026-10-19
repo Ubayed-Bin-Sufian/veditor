@@ -82,7 +82,7 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
         if (
             isinstance(pending, models.Room)
             and pending.event_id == event_id
-            and pending.name.casefold() == name.casefold()
+            and pending.name.lower() == name.lower()
         ):
             return pending.name
     try:
@@ -90,17 +90,35 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
             db.query(models.Room)
             .filter(
                 models.Room.event_id == event_id,
-                func.lower(models.Room.name) == name.casefold(),
+                func.lower(models.Room.name) == func.lower(name),
             )
+            .with_for_update()
             .first()
         )
     except AttributeError, StopIteration:
         # Preserve compatibility with lightweight mocked sessions used by callers.
         room = None
-    if isinstance(room, models.Room):
-        return room.name
-    db.add(models.Room(event_id=event_id, name=name))
-    return name
+    if room is not None:
+        return room.name if isinstance(room, models.Room) else name
+    new_room = models.Room(event_id=event_id, name=name)
+    try:
+        with db.begin_nested():
+            db.add(new_room)
+            db.flush()
+    except IntegrityError:
+        room = (
+            db.query(models.Room)
+            .filter(
+                models.Room.event_id == event_id,
+                func.lower(models.Room.name) == func.lower(name),
+            )
+            .with_for_update()
+            .first()
+        )
+        if room is not None:
+            return room.name if isinstance(room, models.Room) else name
+        raise
+    return new_room.name
 
 
 @router.post("", response_model=schemas.TalkRead, status_code=status.HTTP_201_CREATED)
@@ -171,7 +189,7 @@ def create_or_update_talk(
         )
         if not talk:
             raise
-        talk.room = payload.room
+        talk.room = _ensure_event_room(db, payload.event_id, payload.room)
         talk.end = payload.end
         if payload.speaker_email is not None:
             talk.speaker_email = payload.speaker_email
@@ -1346,7 +1364,7 @@ async def import_schedule(
         if not isinstance(t_info, dict):
             continue
         title = t_info.get("title") or "Untitled Talk"
-        room = t_info.get("room") or "Main Hall"
+        room = t_info.get("room")
         raw_ext_id = (
             t_info.get("external_id")
             or t_info.get("code")

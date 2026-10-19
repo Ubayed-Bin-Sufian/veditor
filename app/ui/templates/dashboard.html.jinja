@@ -265,7 +265,7 @@
       </thead>
       <tbody>
         {% for talk in talks %}
-        <tr data-talk-id="{{ talk.id }}" data-status="{{ talk.status }}" data-title="{{ (talk.title or '') | e }}" data-room="{{ (talk.room or '') | e }}" data-start="{{ talk.start.isoformat() if talk.start else '' }}" data-end="{{ talk.end.isoformat() if talk.end else '' }}" data-speaker-email="{{ (talk.speaker_email or '') | e }}">
+        <tr data-talk-id="{{ talk.id }}" data-event-id="{{ talk.event_id }}" data-status="{{ talk.status }}" data-title="{{ (talk.title or '') | e }}" data-room="{{ (talk.room or '') | e }}" data-start="{{ talk.start.isoformat() if talk.start else '' }}" data-end="{{ talk.end.isoformat() if talk.end else '' }}" data-speaker-email="{{ (talk.speaker_email or '') | e }}">
           {% if can_manage %}
           <td class="col-checkbox">
             <input type="checkbox" class="talk-checkbox" value="{{ talk.id }}">

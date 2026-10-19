@@ -175,16 +175,17 @@ def update_event_room(
     room = (
         db.query(models.Room)
         .filter(models.Room.id == room_id, models.Room.event_id == event_id)
+        .with_for_update()
         .first()
     )
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if payload.name is not None and payload.name.casefold() != room.name.casefold():
+    if payload.name is not None and payload.name != room.name:
         duplicate = (
             db.query(models.Room)
             .filter(
                 models.Room.event_id == event_id,
-                func.lower(models.Room.name) == payload.name.lower(),
+                func.lower(models.Room.name) == func.lower(payload.name),
                 models.Room.id != room_id,
             )
             .first()
@@ -226,6 +227,7 @@ def delete_event_room(
     room = (
         db.query(models.Room)
         .filter(models.Room.id == room_id, models.Room.event_id == event_id)
+        .with_for_update()
         .first()
     )
     if not room:

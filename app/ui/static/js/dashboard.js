@@ -263,7 +263,8 @@ window.openEditTalkModal = function(row) {
   const t = document.getElementById('quick-talk-title');
   if (t) t.value = row.dataset.title || '';
   const r = document.getElementById('quick-talk-room');
-  loadQuickRooms(getSelectedEventId(), row.dataset.room || '');
+  const eventId = row.dataset.eventId || getSelectedEventId();
+  loadQuickRooms(eventId, row.dataset.room || '');
   const sem = document.getElementById('quick-talk-speaker-email');
   if (sem) sem.value = row.dataset.speakerEmail || '';
   const toLocalInputFormat = (isoString) => {
@@ -302,9 +303,14 @@ async function loadQuickRooms(eventId, selectedRoom = '') {
     const rooms = await response.json();
     select.replaceChildren(new Option('No room', ''));
     rooms.forEach(room => select.add(new Option(room.name, room.name)));
+    if (selectedRoom && ![...select.options].some(option => option.value === selectedRoom)) {
+      select.add(new Option(selectedRoom, selectedRoom));
+    }
     select.value = selectedRoom || '';
   } catch (error) {
-    select.replaceChildren(new Option('Unable to load rooms', ''));
+    select.replaceChildren(new Option('No room', ''));
+    if (selectedRoom) select.add(new Option(selectedRoom, selectedRoom));
+    select.value = selectedRoom || '';
   }
 }
 
@@ -313,17 +319,24 @@ async function createQuickRoom(event) {
   const eventId = getSelectedEventId();
   const nameInput = document.getElementById('quick-create-room-name');
   const descriptionInput = document.getElementById('quick-create-room-description');
-  const response = await (window.authFetch || fetch)(`/events/${eventId}/rooms`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: nameInput.value, description: descriptionInput.value || null }),
-  });
-  if (!response.ok) {
-    return Modal.alert({ title: 'Add Room', message: (await response.json()).detail || 'Unable to add room.', variant: 'danger' });
+  try {
+    const response = await (window.authFetch || fetch)(`/events/${eventId}/rooms`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nameInput.value, description: descriptionInput.value || null }),
+    });
+    if (!response.ok) {
+      let body = {};
+      try { body = await response.json(); } catch (_) { /* empty response */ }
+      const detail = Array.isArray(body.detail) ? body.detail.map(item => item.msg || item).join(', ') : body.detail;
+      return Modal.alert({ title: 'Add Room', message: detail || 'Unable to add room.', variant: 'danger' });
+    }
+    const room = await response.json();
+    await loadQuickRooms(eventId, room.name);
+    document.getElementById('quick-create-room-form').reset();
+    Modal.close(document.getElementById('modal-quick-create-room'));
+  } catch (_) {
+    Modal.alert({ title: 'Add Room', message: 'Unable to add room.', variant: 'danger' });
   }
-  const room = await response.json();
-  await loadQuickRooms(eventId, room.name);
-  document.getElementById('quick-create-room-form').reset();
-  Modal.close(document.getElementById('modal-quick-create-room'));
 }
 
 function setBtnBusy(btn, isBusy, busyText) {
