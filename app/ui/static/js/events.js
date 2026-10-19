@@ -1,6 +1,64 @@
 // ── Events Management (events.html) ────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+  const roomsModal = document.getElementById('modal-manage-rooms');
+  const roomsList = document.getElementById('rooms-list');
+  const roomsEventName = document.getElementById('rooms-event-name-display');
+  const roomForm = document.getElementById('create-room-form');
+  let roomsEventId = null;
+
+  async function loadRooms() {
+    roomsList.textContent = 'Loading rooms...';
+    const response = await fetch(`/events/${roomsEventId}/rooms`);
+    if (!response.ok) throw new Error(`Failed to load rooms (${response.status})`);
+    const rooms = await response.json();
+    roomsList.replaceChildren();
+    if (!rooms.length) {
+      roomsList.textContent = 'No rooms configured.';
+      return;
+    }
+    rooms.forEach(room => {
+      const row = document.createElement('div');
+      row.className = 'room-list-row';
+      const details = document.createElement('div');
+      details.innerHTML = `<strong></strong><span></span>`;
+      details.querySelector('strong').textContent = room.name;
+      details.querySelector('span').textContent = `${room.description || 'No description'} · ${room.talks_count} talk(s)`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-danger btn-sm';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        if (!await Modal.confirm({ title: 'Delete room', message: `Delete “${room.name}”? Talks will keep their records but lose this room assignment.`, confirmText: 'Delete', variant: 'danger' })) return;
+        const result = await fetch(`/events/${roomsEventId}/rooms/${room.id}`, { method: 'DELETE' });
+        if (!result.ok) return Modal.alert({ title: 'Delete room', message: 'Unable to delete room.', variant: 'danger' });
+        await loadRooms();
+      });
+      row.append(details, remove);
+      roomsList.append(row);
+    });
+  }
+
+  document.querySelectorAll('.btn-manage-rooms').forEach(button => {
+    button.addEventListener('click', async () => {
+      roomsEventId = button.dataset.eventId;
+      roomsEventName.textContent = button.dataset.eventName || '';
+      Modal.open(roomsModal);
+      try { await loadRooms(); } catch (error) { roomsList.textContent = error.message; }
+    });
+  });
+
+  roomForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const response = await fetch(`/events/${roomsEventId}/rooms`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: document.getElementById('room-name-input').value, description: document.getElementById('room-description-input').value || null }),
+    });
+    if (!response.ok) return Modal.alert({ title: 'Add room', message: (await response.json()).detail || 'Unable to add room.', variant: 'danger' });
+    roomForm.reset();
+    await loadRooms();
+  });
+
   const editModal = document.getElementById('modal-edit-event');
   const editForm = document.getElementById('edit-event-form');
   const editInput = document.getElementById('edit-event-name');

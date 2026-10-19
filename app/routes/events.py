@@ -12,6 +12,8 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -97,6 +99,141 @@ def list_events(
         .filter(models.Event.created_by_user_id == user.user_id)
         .all()
     )
+
+
+def _room_read(room: models.Room, talks_count: int = 0) -> schemas.RoomRead:
+    return schemas.RoomRead(
+        id=room.id,
+        event_id=room.event_id,
+        name=room.name,
+        description=room.description,
+        created_at=room.created_at,
+        talks_count=talks_count,
+    )
+
+
+@router.get("/{event_id}/rooms", response_model=list[schemas.RoomRead])
+def list_event_rooms(
+    event_id: int,
+    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    check_event_access(event_id, user, db)
+    rows = (
+        db.query(models.Room, func.count(models.Talk.id))
+        .outerjoin(
+            models.Talk,
+            (models.Talk.event_id == models.Room.event_id)
+            & (models.Talk.room == models.Room.name),
+        )
+        .filter(models.Room.event_id == event_id)
+        .group_by(models.Room.id)
+        .order_by(func.lower(models.Room.name), models.Room.name)
+        .all()
+    )
+    return [_room_read(room, count) for room, count in rows]
+
+
+@router.post(
+    "/{event_id}/rooms",
+    response_model=schemas.RoomRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_event_room(
+    event_id: int,
+    payload: schemas.RoomCreate,
+    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if user.is_sso:
+        raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
+    check_event_access(event_id, user, db)
+    room = models.Room(
+        event_id=event_id, name=payload.name, description=payload.description
+    )
+    db.add(room)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Room name already exists") from exc
+    db.refresh(room)
+    return _room_read(room)
+
+
+@router.patch("/{event_id}/rooms/{room_id}", response_model=schemas.RoomRead)
+def update_event_room(
+    event_id: int,
+    room_id: int,
+    payload: schemas.RoomUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if user.is_sso:
+        raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
+    check_event_access(event_id, user, db)
+    room = (
+        db.query(models.Room)
+        .filter(models.Room.id == room_id, models.Room.event_id == event_id)
+        .first()
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if payload.name is not None and payload.name.casefold() != room.name.casefold():
+        duplicate = (
+            db.query(models.Room)
+            .filter(
+                models.Room.event_id == event_id,
+                func.lower(models.Room.name) == payload.name.lower(),
+                models.Room.id != room_id,
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Room name already exists")
+        old_name = room.name
+        room.name = payload.name
+        db.query(models.Talk).filter(
+            models.Talk.event_id == event_id, models.Talk.room == old_name
+        ).update({models.Talk.room: payload.name}, synchronize_session=False)
+    update_data = payload.model_dump(exclude_unset=True)
+    if "description" in update_data:
+        room.description = update_data["description"]
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Room name already exists") from exc
+    db.refresh(room)
+    count = db.query(models.Talk).filter(
+        models.Talk.event_id == event_id, models.Talk.room == room.name
+    ).count()
+    return _room_read(room, count)
+
+
+@router.delete("/{event_id}/rooms/{room_id}")
+def delete_event_room(
+    event_id: int,
+    room_id: int,
+    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if user.is_sso:
+        raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
+    check_event_access(event_id, user, db)
+    room = (
+        db.query(models.Room)
+        .filter(models.Room.id == room_id, models.Room.event_id == event_id)
+        .first()
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    db.query(models.Talk).filter(
+        models.Talk.event_id == event_id, models.Talk.room == room.name
+    ).update({models.Talk.room: None}, synchronize_session=False)
+    db.delete(room)
+    db.commit()
+    return {"status": "ok", "deleted_id": room_id}
 
 
 @router.patch("/{event_id}", response_model=schemas.EventRead)

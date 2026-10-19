@@ -23,6 +23,7 @@ from fastapi import (
     status,
 )
 from redis.exceptions import RedisError
+from sqlalchemy import func
 from rq.command import send_stop_job_command
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -70,6 +71,27 @@ router = APIRouter(
 )
 
 
+def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str | None:
+    """Register a talk room without changing the legacy Talk.room contract."""
+    if raw_name is None:
+        return None
+    name = raw_name.strip()
+    if not name:
+        return None
+    room = (
+        db.query(models.Room)
+        .filter(
+            models.Room.event_id == event_id,
+            func.lower(models.Room.name) == name.casefold(),
+        )
+        .first()
+    )
+    if room:
+        return room.name
+    db.add(models.Room(event_id=event_id, name=name))
+    return name
+
+
 @router.post("", response_model=schemas.TalkRead, status_code=status.HTTP_201_CREATED)
 def create_or_update_talk(
     payload: schemas.TalkCreate,
@@ -99,8 +121,9 @@ def create_or_update_talk(
         .first()
     )
 
+    room_name = _ensure_event_room(db, payload.event_id, payload.room)
     if talk:
-        talk.room = payload.room
+        talk.room = room_name
         talk.end = payload.end
         if payload.speaker_email is not None:
             talk.speaker_email = payload.speaker_email
@@ -112,7 +135,7 @@ def create_or_update_talk(
     talk = models.Talk(
         event_id=payload.event_id,
         title=payload.title,
-        room=payload.room,
+        room=room_name,
         start=payload.start,
         end=payload.end,
         speaker_email=payload.speaker_email,
@@ -921,7 +944,7 @@ def update_talk(
         talk.title = title
     if "room" in update_data:
         raw_room = update_data["room"]
-        talk.room = raw_room.strip() if (raw_room and raw_room.strip()) else None
+        talk.room = _ensure_event_room(db, talk.event_id, raw_room)
 
     if "start" in update_data and update_data["start"] is None:
         raise HTTPException(
@@ -1620,7 +1643,7 @@ async def import_schedule(
 
         if existing:
             existing.title = v_talk["title"]
-            existing.room = v_talk["room"]
+            existing.room = _ensure_event_room(db, event.id, v_talk["room"])
             existing.start = v_talk["start"]
             existing.end = v_talk["end"]
             if v_talk.get("speaker_email"):
@@ -1634,7 +1657,7 @@ async def import_schedule(
             event_id=event.id,
             external_id=ext_id,
             title=v_talk["title"],
-            room=v_talk["room"],
+            room=_ensure_event_room(db, event.id, v_talk["room"]),
             start=v_talk["start"],
             end=v_talk["end"],
             speaker_email=v_talk.get("speaker_email"),

@@ -234,6 +234,7 @@ window.openQuickTalkModal = function() {
       const el = document.getElementById(`quick-talk-${k}`);
       if (el) el.value = '';
     });
+    loadQuickRooms(getSelectedEventId());
     Modal.open(m);
   }
 };
@@ -262,7 +263,7 @@ window.openEditTalkModal = function(row) {
   const t = document.getElementById('quick-talk-title');
   if (t) t.value = row.dataset.title || '';
   const r = document.getElementById('quick-talk-room');
-  if (r) r.value = row.dataset.room || '';
+  loadQuickRooms(getSelectedEventId(), row.dataset.room || '');
   const sem = document.getElementById('quick-talk-speaker-email');
   if (sem) sem.value = row.dataset.speakerEmail || '';
   const toLocalInputFormat = (isoString) => {
@@ -279,6 +280,51 @@ window.openEditTalkModal = function(row) {
 
   Modal.open(m);
 };
+
+function getSelectedEventId() {
+  const eventSel = document.getElementById('quick-event-name');
+  const option = eventSel?.options[eventSel.selectedIndex];
+  return option?.dataset.eventId || new URLSearchParams(window.location.search).get('event_id');
+}
+
+async function loadQuickRooms(eventId, selectedRoom = '') {
+  const select = document.getElementById('quick-talk-room');
+  const addButton = document.getElementById('btn-quick-add-room');
+  if (!select || !eventId) {
+    if (select) select.replaceChildren(new Option('No room', ''));
+    if (addButton) addButton.disabled = true;
+    return;
+  }
+  if (addButton) addButton.disabled = false;
+  try {
+    const response = await (window.authFetch || fetch)(`/events/${eventId}/rooms`);
+    if (!response.ok) throw new Error('Unable to load rooms');
+    const rooms = await response.json();
+    select.replaceChildren(new Option('No room', ''));
+    rooms.forEach(room => select.add(new Option(room.name, room.name)));
+    select.value = selectedRoom || '';
+  } catch (error) {
+    select.replaceChildren(new Option('Unable to load rooms', ''));
+  }
+}
+
+async function createQuickRoom(event) {
+  event.preventDefault();
+  const eventId = getSelectedEventId();
+  const nameInput = document.getElementById('quick-create-room-name');
+  const descriptionInput = document.getElementById('quick-create-room-description');
+  const response = await (window.authFetch || fetch)(`/events/${eventId}/rooms`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nameInput.value, description: descriptionInput.value || null }),
+  });
+  if (!response.ok) {
+    return Modal.alert({ title: 'Add Room', message: (await response.json()).detail || 'Unable to add room.', variant: 'danger' });
+  }
+  const room = await response.json();
+  await loadQuickRooms(eventId, room.name);
+  document.getElementById('quick-create-room-form').reset();
+  Modal.close(document.getElementById('modal-quick-create-room'));
+}
 
 function setBtnBusy(btn, isBusy, busyText) {
   if (!btn) return;
@@ -599,6 +645,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnSubmitQuickTalk = document.getElementById('btn-submit-quick-talk');
   if (btnSubmitQuickTalk) btnSubmitQuickTalk.addEventListener('click', window.submitQuickTalk);
+  document.getElementById('quick-event-name')?.addEventListener('change', () => loadQuickRooms(getSelectedEventId()));
+  document.getElementById('btn-quick-add-room')?.addEventListener('click', () => Modal.open(document.getElementById('modal-quick-create-room')));
+  document.getElementById('quick-create-room-form')?.addEventListener('submit', createQuickRoom);
 
   ['quick-talk-title', 'quick-talk-room'].forEach((id) => {
     const input = document.getElementById(id);
