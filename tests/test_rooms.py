@@ -278,3 +278,66 @@ def test_room_http_mutations_normalize_legacy_assignments(db_session):
         assert db_session.get(models.Talk, other_talk.id).room == " hall a "
     finally:
         app.dependency_overrides.clear()
+
+
+def test_room_listing_reuses_pending_case_and_whitespace_variants(db_session):
+    owner_id = 7005
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7005@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "Duplicate legacy room event")
+    event.created_by_user_id = owner_id
+    other_event = _event(db_session, "Other legacy room event")
+    talks = [
+        models.Talk(
+            event_id=event.id,
+            title=f"Legacy variant {index}",
+            room=room_name,
+            start=datetime(2026, 5, 1, index, tzinfo=UTC),
+            end=datetime(2026, 5, 1, index + 1, tzinfo=UTC),
+        )
+        for index, room_name in enumerate(("Hall A", " hall a ", "HALL A"), 10)
+    ]
+    other_talk = models.Talk(
+        event_id=other_event.id,
+        title="Other event room",
+        room=" hall a ",
+        start=datetime(2026, 5, 1, 10, tzinfo=UTC),
+        end=datetime(2026, 5, 1, 11, tzinfo=UTC),
+    )
+    db_session.add_all([*talks, other_talk])
+    db_session.flush()
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        first = client.get(f"/events/{event.id}/rooms")
+        assert first.status_code == 200
+        first_rooms = first.json()
+        assert len(first_rooms) == 1
+        canonical_name = first_rooms[0]["name"]
+        assert canonical_name.lower() == "hall a"
+        assert first_rooms[0]["talks_count"] == 3
+
+        db_session.expire_all()
+        assert db_session.query(models.Room).filter_by(event_id=event.id).count() == 1
+        assert {
+            talk.room
+            for talk in db_session.query(models.Talk)
+            .filter(models.Talk.event_id == event.id)
+            .all()
+        } == {canonical_name}
+        assert db_session.get(models.Talk, other_talk.id).room == " hall a "
+
+        second = client.get(f"/events/{event.id}/rooms")
+        assert second.status_code == 200
+        assert [room["name"] for room in second.json()] == [canonical_name]
+        assert db_session.query(models.Room).filter_by(event_id=event.id).count() == 1
+    finally:
+        app.dependency_overrides.clear()

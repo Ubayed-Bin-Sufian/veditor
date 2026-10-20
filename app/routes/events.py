@@ -121,8 +121,8 @@ def list_event_rooms(
     """List event rooms, reconciling valid legacy talk room values first."""
     check_event_access(event_id, user, db)
     _lock_event_for_room_operation(db, event_id)
-    known_names = {
-        name.lower()
+    canonical_names = {
+        name.lower(): name
         for (name,) in db.query(models.Room.name)
         .filter(models.Room.event_id == event_id)
         .all()
@@ -141,21 +141,13 @@ def list_event_rooms(
     canonicalized_talks = False
     for (raw_name,) in legacy_names:
         name = raw_name.strip()
-        canonical_room = (
-            db.query(models.Room)
-            .filter(
-                models.Room.event_id == event_id,
-                func.lower(models.Room.name) == func.lower(name),
-            )
-            .first()
-        )
-        if canonical_room is None:
+        key = name.lower()
+        canonical_name = canonical_names.get(key)
+        if canonical_name is None:
             db.add(models.Room(event_id=event_id, name=name))
-            known_names.add(name.lower())
+            canonical_names[key] = name
             added_rooms = True
             canonical_name = name
-        else:
-            canonical_name = canonical_room.name
         updated = (
             db.query(models.Talk)
             .filter(
