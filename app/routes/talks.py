@@ -103,7 +103,7 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
             .with_for_update()
             .first()
         )
-    except AttributeError, StopIteration:
+    except (AttributeError, StopIteration):  # fmt: skip
         # Preserve compatibility with lightweight mocked sessions used by callers.
         room = None
     if room is not None:
