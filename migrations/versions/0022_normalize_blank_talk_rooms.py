@@ -1,9 +1,13 @@
-"""Normalize legacy blank talk room assignments."""
+"""Normalize legacy blank talk room assignments.
+
+Revision ID: 0022
+Revises: 0021
+"""
 
 from alembic import op
 
-revision = "0021"
-down_revision = "0020"
+revision = "0022"
+down_revision = "0021"
 branch_labels = None
 depends_on = None
 
