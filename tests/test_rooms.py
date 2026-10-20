@@ -89,7 +89,12 @@ def test_room_rename_and_delete_keep_talk_assignments_consistent(db_session):
     db_session.delete(room)
     db_session.flush()
     db_session.expire_all()
-    assert all(talk.room is None for talk in db_session.query(models.Talk).all())
+    assert all(
+        talk.room is None
+        for talk in db_session.query(models.Talk)
+        .filter(models.Talk.event_id == event.id)
+        .all()
+    )
 
 
 def test_room_assignment_normalizes_blank_and_reuses_pending_room(db_session):
@@ -215,5 +220,61 @@ def test_room_http_endpoints_enforce_event_isolation(db_session):
             f"/events/{other_event.id}/rooms/{other_room.id}"
         )
         assert forbidden_delete.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_room_http_mutations_normalize_legacy_assignments(db_session):
+    owner_id = 7004
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7004@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "Legacy mutation event")
+    event.created_by_user_id = owner_id
+    other_event = _event(db_session, "Legacy other event")
+    room = models.Room(event_id=event.id, name="Hall A")
+    other_room = models.Room(event_id=other_event.id, name="Hall A")
+    db_session.add_all([room, other_room])
+    db_session.flush()
+    target_talk = models.Talk(
+        event_id=event.id,
+        title="Legacy target",
+        room="  hall a  ",
+        start=datetime(2026, 4, 1, 10, tzinfo=UTC),
+        end=datetime(2026, 4, 1, 11, tzinfo=UTC),
+    )
+    other_talk = models.Talk(
+        event_id=other_event.id,
+        title="Other event target",
+        room=" hall a ",
+        start=datetime(2026, 4, 1, 10, tzinfo=UTC),
+        end=datetime(2026, 4, 1, 11, tzinfo=UTC),
+    )
+    db_session.add_all([target_talk, other_talk])
+    db_session.flush()
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        renamed = client.patch(
+            f"/events/{event.id}/rooms/{room.id}",
+            json={"name": "Main Hall"},
+        )
+        assert renamed.status_code == 200
+        db_session.expire_all()
+        assert db_session.get(models.Talk, target_talk.id).room == "Main Hall"
+        assert db_session.get(models.Talk, other_talk.id).room == " hall a "
+
+        deleted = client.delete(f"/events/{event.id}/rooms/{room.id}")
+        assert deleted.status_code == 200
+        db_session.expire_all()
+        assert db_session.get(models.Talk, target_talk.id).room is None
+        assert db_session.get(models.Talk, other_talk.id).room == " hall a "
     finally:
         app.dependency_overrides.clear()

@@ -248,7 +248,8 @@ def update_event_room(
         old_name = room.name
         room.name = payload.name
         db.query(models.Talk).filter(
-            models.Talk.event_id == event_id, models.Talk.room == old_name
+            models.Talk.event_id == event_id,
+            func.lower(func.trim(models.Talk.room)) == func.lower(old_name),
         ).update({models.Talk.room: payload.name}, synchronize_session=False)
     update_data = payload.model_dump(exclude_unset=True)
     if "description" in update_data:
@@ -288,7 +289,8 @@ def delete_event_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     db.query(models.Talk).filter(
-        models.Talk.event_id == event_id, models.Talk.room == room.name
+        models.Talk.event_id == event_id,
+        func.lower(func.trim(models.Talk.room)) == func.lower(room.name),
     ).update({models.Talk.room: None}, synchronize_session=False)
     db.delete(room)
     db.commit()
