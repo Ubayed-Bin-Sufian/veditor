@@ -968,6 +968,7 @@ def update_talk(
             status_code=status.HTTP_404_NOT_FOUND, detail="Talk not found"
         )
     check_event_access(talk.event_id, user, db)
+    _lock_event_for_room_operation(db, talk.event_id)
 
     update_data = payload.model_dump(exclude_unset=True)
 

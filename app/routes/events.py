@@ -118,7 +118,34 @@ def list_event_rooms(
     user: Annotated[CurrentUser, Depends(require_role("organizer"))],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """List event rooms, reconciling valid legacy talk room values first."""
     check_event_access(event_id, user, db)
+    _lock_event_for_room_operation(db, event_id)
+    known_names = {
+        name.lower()
+        for (name,) in db.query(models.Room.name)
+        .filter(models.Room.event_id == event_id)
+        .all()
+    }
+    legacy_names = (
+        db.query(models.Talk.room)
+        .filter(
+            models.Talk.event_id == event_id,
+            models.Talk.room.is_not(None),
+            func.trim(models.Talk.room) != "",
+        )
+        .distinct()
+        .all()
+    )
+    added_rooms = False
+    for (raw_name,) in legacy_names:
+        name = raw_name.strip()
+        if name.lower() not in known_names:
+            db.add(models.Room(event_id=event_id, name=name))
+            known_names.add(name.lower())
+            added_rooms = True
+    if added_rooms:
+        db.commit()
     rows = (
         db.query(models.Room, func.count(models.Talk.id))
         .outerjoin(
@@ -145,6 +172,7 @@ def create_event_room(
     user: Annotated[CurrentUser, Depends(require_role("organizer"))],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Create an organizer-managed room scoped to one event."""
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)
@@ -170,6 +198,7 @@ def update_event_room(
     user: Annotated[CurrentUser, Depends(require_role("organizer"))],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Update a room and synchronize its talk assignments atomically."""
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)
@@ -223,6 +252,7 @@ def delete_event_room(
     user: Annotated[CurrentUser, Depends(require_role("organizer"))],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Delete a room and clear assignments for talks in the same event."""
     if user.is_sso:
         raise HTTPException(status_code=403, detail="SSO sessions cannot manage rooms")
     check_event_access(event_id, user, db)

@@ -5,9 +5,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from app import models
+from app import models, schemas
+from app.auth import CurrentUser
 from app.config import settings
 from app.db import Base
+from app.routes.events import delete_event_room, list_event_rooms, update_event_room
 from app.routes.talks import _ensure_event_room
 
 engine = create_engine(settings.database_url)
@@ -97,3 +99,75 @@ def test_room_assignment_normalizes_blank_and_reuses_pending_room(db_session):
     assert first == "Hall A"
     assert second == "Hall A"
     assert db_session.query(models.Room).filter_by(event_id=event.id).count() == 1
+
+
+def test_authenticated_room_endpoints_preserve_event_isolation(db_session):
+    owner_id = 7001
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7001@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "Endpoint room event")
+    event.created_by_user_id = owner_id
+    other_event = _event(db_session, "Other endpoint room event")
+    room = models.Room(event_id=event.id, name="Hall A")
+    db_session.add(room)
+    other_talk = models.Talk(
+        event_id=other_event.id,
+        title="Other event talk",
+        room="Hall A",
+        start=datetime(2026, 2, 1, 10, tzinfo=UTC),
+        end=datetime(2026, 2, 1, 11, tzinfo=UTC),
+    )
+    db_session.add(other_talk)
+    db_session.flush()
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+
+    updated = update_event_room(
+        event.id,
+        room.id,
+        schemas.RoomUpdate(name="Main Hall"),
+        user,
+        db_session,
+    )
+    assert updated.name == "Main Hall"
+    assert other_talk.room == "Hall A"
+
+    listed = list_event_rooms(event.id, user, db_session)
+    assert [item.name for item in listed] == ["Main Hall"]
+    delete_event_room(event.id, room.id, user, db_session)
+    db_session.expire_all()
+    assert db_session.get(models.Talk, other_talk.id).room == "Hall A"
+
+
+def test_room_listing_reconciles_legacy_talk_room_values(db_session):
+    owner_id = 7002
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7002@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "Legacy room event")
+    event.created_by_user_id = owner_id
+    talk = models.Talk(
+        event_id=event.id,
+        title="Legacy room talk",
+        room="  Legacy Hall  ",
+        start=datetime(2026, 3, 1, 10, tzinfo=UTC),
+        end=datetime(2026, 3, 1, 11, tzinfo=UTC),
+    )
+    db_session.add(talk)
+    db_session.flush()
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+
+    listed = list_event_rooms(event.id, user, db_session)
+    assert [item.name for item in listed] == ["Legacy Hall"]
