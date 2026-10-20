@@ -1,19 +1,22 @@
 from datetime import UTC, datetime
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app import models, schemas
-from app.auth import CurrentUser
+from app.auth import CurrentUser, get_current_user
 from app.config import settings
-from app.db import Base
+from app.db import Base, get_db
+from app.main import app
 from app.routes.events import delete_event_room, list_event_rooms, update_event_room
 from app.routes.talks import _ensure_event_room
 
 engine = create_engine(settings.database_url)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+client = TestClient(app)
 
 
 @pytest.fixture
@@ -171,3 +174,46 @@ def test_room_listing_reconciles_legacy_talk_room_values(db_session):
 
     listed = list_event_rooms(event.id, user, db_session)
     assert [item.name for item in listed] == ["Legacy Hall"]
+
+
+def test_room_http_endpoints_enforce_event_isolation(db_session):
+    owner_id = 7003
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7003@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "HTTP room event")
+    event.created_by_user_id = owner_id
+    other_event = _event(db_session, "HTTP other room event")
+    room = models.Room(event_id=event.id, name="Hall A")
+    other_room = models.Room(event_id=other_event.id, name="Hall A")
+    db_session.add_all([room, other_room])
+    db_session.flush()
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        response = client.patch(
+            f"/events/{event.id}/rooms/{room.id}",
+            json={"name": "Main Hall"},
+        )
+        assert response.status_code == 200
+        assert response.json()["name"] == "Main Hall"
+
+        forbidden_patch = client.patch(
+            f"/events/{other_event.id}/rooms/{other_room.id}",
+            json={"name": "Unauthorized Hall"},
+        )
+        assert forbidden_patch.status_code == 403
+
+        forbidden_delete = client.delete(
+            f"/events/{other_event.id}/rooms/{other_room.id}"
+        )
+        assert forbidden_delete.status_code == 403
+    finally:
+        app.dependency_overrides.clear()

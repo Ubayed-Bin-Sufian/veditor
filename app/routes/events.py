@@ -138,13 +138,35 @@ def list_event_rooms(
         .all()
     )
     added_rooms = False
+    canonicalized_talks = False
     for (raw_name,) in legacy_names:
         name = raw_name.strip()
-        if name.lower() not in known_names:
+        canonical_room = (
+            db.query(models.Room)
+            .filter(
+                models.Room.event_id == event_id,
+                func.lower(models.Room.name) == func.lower(name),
+            )
+            .first()
+        )
+        if canonical_room is None:
             db.add(models.Room(event_id=event_id, name=name))
             known_names.add(name.lower())
             added_rooms = True
-    if added_rooms:
+            canonical_name = name
+        else:
+            canonical_name = canonical_room.name
+        updated = (
+            db.query(models.Talk)
+            .filter(
+                models.Talk.event_id == event_id,
+                func.lower(func.trim(models.Talk.room)) == func.lower(canonical_name),
+                models.Talk.room != canonical_name,
+            )
+            .update({models.Talk.room: canonical_name}, synchronize_session=False)
+        )
+        canonicalized_talks = canonicalized_talks or bool(updated)
+    if added_rooms or canonicalized_talks:
         db.commit()
     rows = (
         db.query(models.Room, func.count(models.Talk.id))
