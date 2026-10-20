@@ -1642,6 +1642,21 @@ async def import_schedule(
                     set((client_record.event_ids or []) + [event.id])
                 )
 
+    _lock_event_for_room_operation(db, event.id)
+    import_room_names = {
+        room.name.lower(): room.name
+        for room in db.query(models.Room).filter(models.Room.event_id == event.id).all()
+    }
+
+    def resolve_import_room(raw_name: str | None) -> str | None:
+        if raw_name is None or not raw_name.strip():
+            return None
+        normalized = raw_name.strip()
+        key = normalized.lower()
+        if key not in import_room_names:
+            import_room_names[key] = _ensure_event_room(db, event.id, normalized)
+        return import_room_names[key]
+
     imported_count = 0
     for v_talk in deduped_talks:
         ext_id = v_talk.get("external_id")
@@ -1681,7 +1696,7 @@ async def import_schedule(
 
         if existing:
             existing.title = v_talk["title"]
-            existing.room = _ensure_event_room(db, event.id, v_talk["room"])
+            existing.room = resolve_import_room(v_talk["room"])
             existing.start = v_talk["start"]
             existing.end = v_talk["end"]
             if v_talk.get("speaker_email"):
@@ -1695,7 +1710,7 @@ async def import_schedule(
             event_id=event.id,
             external_id=ext_id,
             title=v_talk["title"],
-            room=_ensure_event_room(db, event.id, v_talk["room"]),
+            room=resolve_import_room(v_talk["room"]),
             start=v_talk["start"],
             end=v_talk["end"],
             speaker_email=v_talk.get("speaker_email"),

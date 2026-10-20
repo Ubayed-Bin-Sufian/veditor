@@ -25,6 +25,16 @@ document.addEventListener('DOMContentLoaded', () => {
       details.querySelector('strong').textContent = room.name;
       const created = room.created_at ? new Date(room.created_at).toLocaleDateString() : 'Unknown date';
       details.querySelector('span').textContent = `${room.description || 'No description'} · ${room.talks_count} talk(s) · Created ${created}`;
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'btn btn-ghost btn-sm';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        document.getElementById('room-name-input').value = room.name;
+        document.getElementById('room-description-input').value = room.description || '';
+        roomForm.dataset.editingRoomId = room.id;
+        roomForm.querySelector('button[type="submit"]').textContent = 'Save Room';
+      });
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn btn-danger btn-sm';
@@ -39,7 +49,10 @@ document.addEventListener('DOMContentLoaded', () => {
           Modal.alert({ title: 'Delete room', message: error.message, variant: 'danger' });
         }
       });
-      row.append(details, remove);
+      const actions = document.createElement('div');
+      actions.className = 'room-list-actions';
+      actions.append(edit, remove);
+      row.append(details, actions);
       roomsList.append(row);
     });
   }
@@ -56,8 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
   roomForm?.addEventListener('submit', async event => {
     event.preventDefault();
     try {
-      const response = await fetch(`/events/${roomsEventId}/rooms`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const editingRoomId = roomForm.dataset.editingRoomId;
+      const response = await fetch(editingRoomId ? `/events/${roomsEventId}/rooms/${editingRoomId}` : `/events/${roomsEventId}/rooms`, {
+        method: editingRoomId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: document.getElementById('room-name-input').value, description: document.getElementById('room-description-input').value || null }),
       });
       if (!response.ok) {
@@ -67,6 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return Modal.alert({ title: 'Add room', message: detail || 'Unable to add room.', variant: 'danger' });
       }
       roomForm.reset();
+      delete roomForm.dataset.editingRoomId;
+      roomForm.querySelector('button[type="submit"]').textContent = 'Add Room';
       await loadRooms();
     } catch (error) {
       Modal.alert({ title: 'Add room', message: error.message || 'Unable to add room.', variant: 'danger' });
