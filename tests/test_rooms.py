@@ -341,3 +341,59 @@ def test_room_listing_reuses_pending_case_and_whitespace_variants(db_session):
         assert db_session.query(models.Room).filter_by(event_id=event.id).count() == 1
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("duplicate_name", ["hall a", " HALL A "])
+def test_room_http_creation_validates_uniqueness_and_event_scope(
+    db_session, duplicate_name
+):
+    owner_id = 7006
+    db_session.add(
+        models.User(
+            id=owner_id,
+            email="room-owner-7006@example.com",
+            hashed_password="test",
+            role="organizer",
+        )
+    )
+    db_session.flush()
+    event = _event(db_session, "Room creation event")
+    event.created_by_user_id = owner_id
+    other_event = _event(db_session, "Other room creation event")
+    other_event.created_by_user_id = owner_id
+    event_id = event.id
+    other_event_id = other_event.id
+    user = CurrentUser(user_id=owner_id, role="organizer", source="jwt")
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        created = client.post(
+            f"/events/{event_id}/rooms",
+            json={"name": "  Hall A  ", "description": "Main venue"},
+        )
+        assert created.status_code == 201
+        assert created.json()["event_id"] == event_id
+        assert created.json()["name"] == "Hall A"
+        assert created.json()["description"] == "Main venue"
+
+        invalid = client.post(f"/events/{event_id}/rooms", json={"name": "   "})
+        assert invalid.status_code == 422
+
+        same_name_other_event = client.post(
+            f"/events/{other_event_id}/rooms", json={"name": "Hall A"}
+        )
+        assert same_name_other_event.status_code == 201
+        assert same_name_other_event.json()["event_id"] == other_event_id
+        assert (
+            db_session.query(models.Room)
+            .filter(models.Room.event_id == other_event_id)
+            .count()
+            == 1
+        )
+
+        duplicate = client.post(
+            f"/events/{event_id}/rooms", json={"name": duplicate_name}
+        )
+        assert duplicate.status_code == 409
+    finally:
+        app.dependency_overrides.clear()
