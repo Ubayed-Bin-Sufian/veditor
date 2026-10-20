@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0020"
-down_revision: str | Sequence[str] | None = "0019"
+revision: str = "0022"
+down_revision: str | Sequence[str] | None = "0021"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
