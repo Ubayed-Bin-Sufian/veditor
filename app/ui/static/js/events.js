@@ -101,10 +101,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  roomCancel?.addEventListener('click', resetRoomForm);
+  roomCancel?.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    resetRoomForm();
+  });
   roomsModal?.querySelectorAll('[data-modal-close]').forEach(button => {
     button.addEventListener('click', resetRoomForm);
   });
+  roomsModal?.addEventListener('close', resetRoomForm);
 
   const editModal = document.getElementById('modal-edit-event');
   const editForm = document.getElementById('edit-event-form');
