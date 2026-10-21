@@ -5,11 +5,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const roomsList = document.getElementById('rooms-list');
   const roomsEventName = document.getElementById('rooms-event-name-display');
   const roomForm = document.getElementById('create-room-form');
+  const roomSubmit = roomForm?.querySelector('button[type="submit"]');
+  const roomCancel = document.getElementById('cancel-room-edit');
   let roomsEventId = null;
+
+  function resetRoomForm() {
+    roomForm?.reset();
+    if (roomForm) delete roomForm.dataset.editingRoomId;
+    if (roomSubmit) roomSubmit.textContent = 'Add Room';
+    if (roomCancel) roomCancel.hidden = true;
+  }
 
   async function loadRooms() {
     roomsList.textContent = 'Loading rooms...';
-    const response = await fetch(`/events/${roomsEventId}/rooms`);
+    const response = await (window.authFetch || fetch)(`/events/${roomsEventId}/rooms`);
     if (!response.ok) throw new Error(`Failed to load rooms (${response.status})`);
     const rooms = await response.json();
     roomsList.replaceChildren();
@@ -33,7 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('room-name-input').value = room.name;
         document.getElementById('room-description-input').value = room.description || '';
         roomForm.dataset.editingRoomId = room.id;
-        roomForm.querySelector('button[type="submit"]').textContent = 'Save Room';
+        roomSubmit.textContent = 'Save Room';
+        roomCancel.hidden = false;
       });
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -42,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
       remove.addEventListener('click', async () => {
         if (!await Modal.confirm({ title: 'Delete room', message: `Delete “${room.name}”? Talks will keep their records but lose this room assignment.`, confirmText: 'Delete', variant: 'danger' })) return;
         try {
-          const result = await fetch(`/events/${roomsEventId}/rooms/${room.id}`, { method: 'DELETE' });
+          const result = await (window.authFetch || fetch)(`/events/${roomsEventId}/rooms/${room.id}`, { method: 'DELETE' });
           if (!result.ok) throw new Error('Unable to delete room.');
           await loadRooms();
         } catch (error) {
@@ -61,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', async () => {
       roomsEventId = button.dataset.eventId;
       roomsEventName.textContent = button.dataset.eventName || '';
+      resetRoomForm();
       Modal.open(roomsModal);
       try { await loadRooms(); } catch (error) { roomsList.textContent = error.message; }
     });
@@ -70,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     event.preventDefault();
     try {
       const editingRoomId = roomForm.dataset.editingRoomId;
-      const response = await fetch(editingRoomId ? `/events/${roomsEventId}/rooms/${editingRoomId}` : `/events/${roomsEventId}/rooms`, {
+      const response = await (window.authFetch || fetch)(editingRoomId ? `/events/${roomsEventId}/rooms/${editingRoomId}` : `/events/${roomsEventId}/rooms`, {
         method: editingRoomId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: document.getElementById('room-name-input').value, description: document.getElementById('room-description-input').value || null }),
       });
@@ -82,11 +93,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       roomForm.reset();
       delete roomForm.dataset.editingRoomId;
-      roomForm.querySelector('button[type="submit"]').textContent = 'Add Room';
+      roomSubmit.textContent = 'Add Room';
+      roomCancel.hidden = true;
       await loadRooms();
     } catch (error) {
       Modal.alert({ title: 'Add room', message: error.message || 'Unable to add room.', variant: 'danger' });
     }
+  });
+
+  roomCancel?.addEventListener('click', resetRoomForm);
+  roomsModal?.querySelectorAll('[data-modal-close]').forEach(button => {
+    button.addEventListener('click', resetRoomForm);
   });
 
   const editModal = document.getElementById('modal-edit-event');

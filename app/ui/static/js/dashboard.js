@@ -294,7 +294,7 @@ async function loadQuickRooms(eventId, selectedRoom = '') {
   const modal = document.getElementById('modal-quick-talk');
   const select = document.getElementById('quick-talk-room');
   const addButton = document.getElementById('btn-quick-add-room');
-  const requestId = `${eventId || ''}:${Date.now()}:${Math.random()}`;
+  const requestId = `${++loadQuickRooms.requestGeneration}:${eventId || ''}`;
   if (modal) modal.dataset.roomsRequestId = requestId;
   if (!select || !eventId) {
     if (select) {
@@ -327,6 +327,8 @@ async function loadQuickRooms(eventId, selectedRoom = '') {
     select.disabled = false;
   }
 }
+
+loadQuickRooms.requestGeneration = 0;
 
 async function createQuickRoom(event) {
   event.preventDefault();

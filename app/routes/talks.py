@@ -94,19 +94,15 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
             and pending.name.lower() == name.lower()
         ):
             return pending.name
-    try:
-        room = (
-            db.query(models.Room)
-            .filter(
-                models.Room.event_id == event_id,
-                func.lower(models.Room.name) == func.lower(name),
-            )
-            .with_for_update()
-            .first()
+    room = (
+        db.query(models.Room)
+        .filter(
+            models.Room.event_id == event_id,
+            func.lower(models.Room.name) == func.lower(name),
         )
-    except (AttributeError, StopIteration):  # fmt: skip
-        # Preserve compatibility with lightweight mocked sessions used by callers.
-        room = None
+        .with_for_update()
+        .first()
+    )
     if room is not None:
         return room.name if isinstance(room, models.Room) else name
     new_room = models.Room(event_id=event_id, name=name)
@@ -1026,9 +1022,10 @@ def update_talk(
             status_code=status.HTTP_404_NOT_FOUND, detail="Talk not found"
         )
     check_event_access(talk.event_id, user, db)
-    _lock_event_for_room_operation(db, talk.event_id)
-
     update_data = payload.model_dump(exclude_unset=True)
+
+    if "room" in update_data:
+        _lock_event_for_room_operation(db, talk.event_id)
 
     if "title" in update_data:
         title = (update_data["title"] or "").strip()

@@ -118,48 +118,8 @@ def list_event_rooms(
     user: Annotated[CurrentUser, Depends(require_role("organizer"))],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """List event rooms, reconciling valid legacy talk room values first."""
+    """List event rooms without mutating event or talk records."""
     check_event_access(event_id, user, db)
-    _lock_event_for_room_operation(db, event_id)
-    canonical_names = {
-        name.lower(): name
-        for (name,) in db.query(models.Room.name)
-        .filter(models.Room.event_id == event_id)
-        .all()
-    }
-    legacy_names = (
-        db.query(models.Talk.room)
-        .filter(
-            models.Talk.event_id == event_id,
-            models.Talk.room.is_not(None),
-            func.trim(models.Talk.room) != "",
-        )
-        .distinct()
-        .all()
-    )
-    added_rooms = False
-    canonicalized_talks = False
-    for (raw_name,) in legacy_names:
-        name = raw_name.strip()
-        key = name.lower()
-        canonical_name = canonical_names.get(key)
-        if canonical_name is None:
-            db.add(models.Room(event_id=event_id, name=name))
-            canonical_names[key] = name
-            added_rooms = True
-            canonical_name = name
-        updated = (
-            db.query(models.Talk)
-            .filter(
-                models.Talk.event_id == event_id,
-                func.lower(func.trim(models.Talk.room)) == func.lower(canonical_name),
-                models.Talk.room != canonical_name,
-            )
-            .update({models.Talk.room: canonical_name}, synchronize_session=False)
-        )
-        canonicalized_talks = canonicalized_talks or bool(updated)
-    if added_rooms or canonicalized_talks:
-        db.commit()
     rows = (
         db.query(models.Room, func.count(models.Talk.id))
         .outerjoin(
