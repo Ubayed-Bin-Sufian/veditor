@@ -12,7 +12,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import any_, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -398,7 +398,7 @@ def _get_event_client(event_id: int, db: Session) -> models.Client | None:
         db.query(models.Client)
         .filter(
             models.Client.is_platform.is_(False),
-            models.Client.event_ids.any(event_id),
+            any_(models.Client.event_ids) == event_id,
         )
         .all()
     )
@@ -432,7 +432,7 @@ def list_event_api_keys(
         db.query(models.Client)
         .filter(
             models.Client.is_platform.is_(False),
-            models.Client.event_ids.any(event_id),
+            any_(models.Client.event_ids) == event_id,
         )
         .all()
     )
@@ -490,7 +490,7 @@ def create_event_api_key(
         db.query(models.Client)
         .filter(
             models.Client.is_platform.is_(False),
-            models.Client.event_ids.any(event_id),
+            any_(models.Client.event_ids) == event_id,
         )
         .all()
     )
