@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TypeIs
 
 import anyio.to_thread
 import av
@@ -24,6 +24,7 @@ from fastapi import (
 )
 from redis.exceptions import RedisError
 from rq.command import send_stop_job_command
+from rq.job import Job
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,7 @@ from app.auth import (
     require_role,
 )
 from app.config import get_setting, settings
+from app.consts import AuthRole
 from app.db import get_db
 from app.ingest import (
     IngestPathRejectedError,
@@ -75,7 +77,7 @@ router = APIRouter(
 def create_or_update_talk(
     payload: schemas.TalkCreate,
     response: Response,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """
@@ -252,7 +254,7 @@ def get_talk_jobs(
 def ingest_recording(
     talk_id: int,
     payload: schemas.RecordingIngestRequest,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -318,7 +320,7 @@ def ingest_recording(
 )
 def approve_talk(
     talk_id: int,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
     payload: schemas.ApproveRequest | None = None,
@@ -521,10 +523,10 @@ def submit_cut_bounds(
 )
 def upload_bumper_file(
     talk_id: int,
+    db: Annotated[Session, Depends(get_db)],
     file: Annotated[UploadFile, File()],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     kind: Annotated[str, Form()] = "intro",
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))] = None,
-    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Upload a custom bumper and return an opaque key understood by assembly."""
     talk = db.query(models.Talk).filter(models.Talk.id == talk_id).first()
@@ -628,7 +630,7 @@ def _apply_intro_outro_config(
 def handoff_talk(
     talk_id: int,
     payload: schemas.IntroOutroRequest,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -733,7 +735,7 @@ def handoff_talk(
 def configure_assembly(
     talk_id: int,
     payload: schemas.IntroOutroRequest,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -818,7 +820,7 @@ def _cancel_talk_jobs(talk_id: int, storage: StorageBackend | None = None) -> No
     """
     errors: list[str] = []
 
-    def _matches_talk(rq_job) -> bool:
+    def _matches_talk(rq_job: Job | None) -> TypeIs[Job]:
         if not rq_job:
             return False
         if rq_job.func_name == "app.tasks.job_ingest_room_url":
@@ -897,7 +899,7 @@ def _cancel_talk_jobs(talk_id: int, storage: StorageBackend | None = None) -> No
 )
 def abort_talk(
     talk_id: int,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -948,7 +950,7 @@ def _normalize_dt(dt: datetime | None) -> datetime | None:
 def update_talk(
     talk_id: int,
     payload: schemas.TalkUpdate,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """
@@ -1021,7 +1023,7 @@ def update_talk(
 @router.delete("/{talk_id}", status_code=status.HTTP_200_OK)
 def delete_talk(
     talk_id: int,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -1053,7 +1055,7 @@ def delete_talk(
 @router.post("/bulk-delete", response_model=schemas.BulkDeleteResponse)
 def bulk_delete_talks(
     payload: schemas.BulkDeleteRequest,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -1119,7 +1121,7 @@ def bulk_delete_talks(
 async def upload_recording(
     talk_id: int,
     file: Annotated[UploadFile, File()],
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
 ):
@@ -1236,7 +1238,7 @@ MAX_SCHEDULE_IMPORT_SIZE = 10 * 1024 * 1024  # 10MB
 @router.post("/schedule/import", response_model=schemas.ScheduleImportResponse)
 async def import_schedule(
     request: Request,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     file: Annotated[UploadFile | None, File()] = None,
 ):
@@ -1819,7 +1821,7 @@ def create_talk_sso_token(
 )
 async def attach_room_recording(
     request: Request,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
     storage: Annotated[StorageBackend, Depends(get_storage_backend)],
     room: Annotated[str | None, Form()] = None,
