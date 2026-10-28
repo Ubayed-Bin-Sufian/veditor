@@ -117,7 +117,7 @@ def _room_read(room: models.Room, talks_count: int = 0) -> schemas.RoomRead:
 @router.get("/{event_id}/rooms", response_model=list[schemas.RoomRead])
 def list_event_rooms(
     event_id: int,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """List event rooms without mutating event or talk records."""
@@ -145,7 +145,7 @@ def list_event_rooms(
 def create_event_room(
     event_id: int,
     payload: schemas.RoomCreate,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create an organizer-managed room scoped to one event."""
@@ -171,7 +171,7 @@ def update_event_room(
     event_id: int,
     room_id: int,
     payload: schemas.RoomUpdate,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update a room and synchronize its talk assignments atomically."""
@@ -226,7 +226,7 @@ def update_event_room(
 def delete_event_room(
     event_id: int,
     room_id: int,
-    user: Annotated[CurrentUser, Depends(require_role("organizer"))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a room and clear assignments for talks in the same event."""

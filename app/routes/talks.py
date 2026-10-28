@@ -132,7 +132,7 @@ def _ensure_event_room(db: Session, event_id: int, raw_name: str | None) -> str 
 def create_or_update_talk(
     payload: schemas.TalkCreate,
     response: Response,
-    user: Annotated[CurrentUser, Depends(require_role(AuthRole))],
+    user: Annotated[CurrentUser, Depends(require_role(AuthRole.ORGANIZER))],
     db: Annotated[Session, Depends(get_db)],
 ):
     """
