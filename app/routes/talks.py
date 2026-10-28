@@ -1932,7 +1932,7 @@ async def _attach_room_recording_impl(
     source_path: str | None = None,
     recording_start: datetime | None = None,
 ):
-    """Shared room-recording attachment workflow for both request encodings."""
+    """Process the multipart room-recording attachment workflow."""
 
     if not room or not room.strip():
         raise HTTPException(

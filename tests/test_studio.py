@@ -2908,6 +2908,29 @@ def test_attach_room_recording_unauthorized(client: TestClient, db_session):
     assert res.status_code == 401
 
 
+def test_attach_room_recording_requires_room(client: TestClient, db_session):
+    from app.auth import hash_api_key
+
+    api_key = f"key_{uuid.uuid4().hex}"
+    client_model = models.Client(hashed_key=hash_api_key(api_key), event_ids=[])
+    db_session.add(client_model)
+    db_session.commit()
+
+    multipart_cases = (
+        {"event_id": (None, "1")},
+        {"room": (None, "")},
+        {"room": (None, "   ")},
+    )
+    for fields in multipart_cases:
+        res = client.post(
+            "/talks/room/attach-recording",
+            files=fields,
+            headers={"X-API-Key": api_key},
+        )
+        assert res.status_code == 400
+        assert res.json()["detail"] == "Room name is required"
+
+
 def test_attach_room_recording_studio_alias(
     client: TestClient, db_session, temp_storage, tmp_path
 ):
