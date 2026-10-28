@@ -2884,10 +2884,10 @@ def test_attach_room_recording_from_ingest_roots(
     with patch("app.routes.talks.light_queue"):
         res = client.post(
             "/talks/room/attach-recording",
-            json={
-                "room": "Hall B",
-                "event_id": event.id,
-                "relative_key": clip.name,
+            files={
+                "room": (None, "Hall B"),
+                "event_id": (None, str(event.id)),
+                "relative_key": (None, clip.name),
             },
             headers={"X-API-Key": api_key},
         )
@@ -3509,13 +3509,13 @@ def test_attach_room_recording_with_video_url(
     db_session.commit()
 
     with patch("app.routes.talks.heavy_queue") as mock_heavy_q:
-        # 1. Test JSON payload
+        # 1. Test multipart URL payload
         res = client.post(
             "/talks/room/attach-recording",
-            json={
-                "room": "Auditorium Stream",
-                "event_id": event.id,
-                "video_url": "https://example.com/recordings/livestream123.mp4",
+            files={
+                "room": (None, "Auditorium Stream"),
+                "event_id": (None, str(event.id)),
+                "video_url": (None, "https://example.com/recordings/livestream123.mp4"),
             },
             headers={"X-API-Key": api_key},
         )
@@ -3576,10 +3576,10 @@ def test_attach_room_recording_with_video_url_multipart(
     with patch("app.routes.talks.heavy_queue") as mock_heavy_q:
         res = client.post(
             "/talks/room/attach-recording",
-            data={
-                "room": "Auditorium Stream MP",
-                "event_id": str(event.id),
-                "video_url": "https://example.com/recordings/room_stream.mp4",
+            files={
+                "room": (None, "Auditorium Stream MP"),
+                "event_id": (None, str(event.id)),
+                "video_url": (None, "https://example.com/recordings/room_stream.mp4"),
             },
             headers={"X-API-Key": api_key},
         )
@@ -3629,10 +3629,10 @@ def test_attach_room_recording_url_and_source_validations(
     # 1. Invalid URL scheme
     res = client.post(
         "/talks/room/attach-recording",
-        json={
-            "room": "Val Room",
-            "event_id": event.id,
-            "video_url": "ftp://bad-scheme.com/video.mp4",
+        files={
+            "room": (None, "Val Room"),
+            "event_id": (None, str(event.id)),
+            "video_url": (None, "ftp://bad-scheme.com/video.mp4"),
         },
         headers={"X-API-Key": api_key},
     )
@@ -3642,9 +3642,9 @@ def test_attach_room_recording_url_and_source_validations(
     # 2. No source provided
     res = client.post(
         "/talks/room/attach-recording",
-        json={
-            "room": "Val Room",
-            "event_id": event.id,
+        files={
+            "room": (None, "Val Room"),
+            "event_id": (None, str(event.id)),
         },
         headers={"X-API-Key": api_key},
     )
