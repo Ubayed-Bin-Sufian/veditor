@@ -1905,34 +1905,6 @@ async def attach_room_recording(
     recording_start: Annotated[datetime | None, Form()] = None,
 ):
     """Attach a continuous room recording submitted as multipart form data."""
-    return await _attach_room_recording_impl(
-        user=user,
-        db=db,
-        storage=storage,
-        room=room,
-        event_id=event_id,
-        file=file,
-        video_url=video_url,
-        relative_key=relative_key,
-        source_path=source_path,
-        recording_start=recording_start,
-    )
-
-
-async def _attach_room_recording_impl(
-    *,
-    user: CurrentUser,
-    db: Session,
-    storage: StorageBackend,
-    room: str | None = None,
-    event_id: int | None = None,
-    file: UploadFile | None = None,
-    video_url: str | None = None,
-    relative_key: str | None = None,
-    source_path: str | None = None,
-    recording_start: datetime | None = None,
-):
-    """Process the multipart room-recording attachment workflow."""
 
     if not room or not room.strip():
         raise HTTPException(
