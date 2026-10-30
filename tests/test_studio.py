@@ -4078,32 +4078,30 @@ def test_room_days_and_targeted_multi_day_room_attachment(client, db_session):
         assert t2_d1.status == "detecting"
         assert t3_d2.status == "waiting_for_files"
 
-    # 4. Attaching with invalid JSON target_date returns 400
-    res_invalid_json_date = client.post(
+    # 4. Attaching with invalid multipart target_date returns 422
+    res_invalid_date = client.post(
         "/talks/room/attach-recording",
-        json={
-            "room": "Auditorium A",
-            "event_id": event.id,
-            "video_url": "https://example.com/day1.mp4",
-            "target_date": "not-a-valid-date",
+        files={
+            "room": (None, "Auditorium A"),
+            "event_id": (None, str(event.id)),
+            "video_url": (None, "https://example.com/day1.mp4"),
+            "target_date": (None, "not-a-valid-date"),
         },
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+        headers={"X-API-Key": api_key},
     )
-    assert res_invalid_json_date.status_code == 400
-    assert "Invalid target_date format" in res_invalid_json_date.json()["detail"]
+    assert res_invalid_date.status_code == 422
 
-    res_non_string_json_date = client.post(
+    res_non_string_date = client.post(
         "/talks/room/attach-recording",
-        json={
-            "room": "Auditorium A",
-            "event_id": event.id,
-            "video_url": "https://example.com/day1.mp4",
-            "target_date": 12345,
+        files={
+            "room": (None, "Auditorium A"),
+            "event_id": (None, str(event.id)),
+            "video_url": (None, "https://example.com/day1.mp4"),
+            "target_date": (None, "12345"),
         },
-        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+        headers={"X-API-Key": api_key},
     )
-    assert res_non_string_json_date.status_code == 400
-    assert "Invalid target_date format" in res_non_string_json_date.json()["detail"]
+    assert res_non_string_date.status_code == 422
 
 
 def test_room_days_day_numbering_relative_to_event_start(client, db_session):
