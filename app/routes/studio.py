@@ -555,8 +555,10 @@ def _render_talks_page(
     if status_filter:
         query = query.filter(models.Talk.status == status_filter)
     if q:
+        q = q.replace("\x00", "")
         escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.filter(models.Talk.title.ilike(f"%{escaped_q}%", escape="\\"))
+        if q.isascii():
+            query = query.filter(models.Talk.title.ilike(f"%{escaped_q}%", escape="\\"))
 
     normalized_sort_by = sort_by if sort_by in _TALK_SORT_COLUMNS else "start"
     normalized_sort_dir = sort_dir if sort_dir in ("asc", "desc") else "desc"
@@ -565,6 +567,9 @@ def _render_talks_page(
         sort_column.asc() if normalized_sort_dir == "asc" else sort_column.desc()
     )
     talks = query.order_by(order_expression, models.Talk.id.desc()).all()
+    if q and not q.isascii():
+        q_folded = q.casefold()
+        talks = [talk for talk in talks if q_folded in talk.title.casefold()]
 
     all_rooms = [
         r
