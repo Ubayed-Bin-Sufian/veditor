@@ -922,7 +922,7 @@ def test_room_page_lists_only_talks_in_that_room(client: TestClient, db_session)
     assert 'id="talks-scope-title">Main Stage</h1>' in resp.text
     assert "Main Stage Opening" in resp.text
     assert "Main Stage Closing" in resp.text
-    assert "Workshop Hands-On" not in resp.text
+    assert "ÉCOLE Session" not in resp.text
     assert "Roomless Lightning Talk" not in resp.text
     assert "Other Event Main Stage Talk" not in resp.text
     assert "2 results" in resp.text

@@ -568,8 +568,8 @@ def _render_talks_page(
     )
     talks = query.order_by(order_expression, models.Talk.id.desc()).all()
     if q and not q.isascii():
-        q_folded = q.casefold()
-        talks = [talk for talk in talks if q_folded in talk.title.casefold()]
+        q_lower = q.lower()
+        talks = [talk for talk in talks if q_lower in talk.title.lower()]
 
     all_rooms = [
         r
